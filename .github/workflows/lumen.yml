@@ -1,5 +1,6 @@
 name: Lumen
 on: [push]
+
 jobs:
   lumen:
     permissions:
