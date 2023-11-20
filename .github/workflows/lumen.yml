@@ -1,7 +1,0 @@
-name: Lumen
-on: [push]
-jobs:
-  lumen:
-    permissions:
-      contents: write
-    uses: lumen-notes/lumen/.github/workflows/lumen.yml@main
