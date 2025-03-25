@@ -1,0 +1,66 @@
+name: Delete unreferenced uploads
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1' # Every Monday
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Delete unreferenced uploads
+        id: delete-files
+        shell: bash
+        run: |
+          echo "Starting to process unreferenced uploads..."
+
+          # We'll construct canonical URLs pointing to the current commit
+          GH_CANONICAL_URL="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}"
+
+          DELETED_FILES_LIST=""
+
+          # Find all files in uploads and sort by descending name
+          while IFS= read -r -d '' file; do
+            basefile=$(basename "$file")
+            echo "Checking file: $file"
+
+            # Search for the file's full path or just its basename in Markdown files
+            if grep -Rq "$file" . --include="*.md" || grep -Rq "$basefile" . --include="*.md"; then
+              echo "  -> File is referenced. Skipping."
+            else
+              echo "  -> File is NOT referenced. Deleting..."
+              # Append a bullet point with a link to the file in GitHub
+              DELETED_FILES_LIST+="- [\`$file\`]($GH_CANONICAL_URL/$file)\n"
+              rm "$file"
+              echo "Deleted: $file"
+            fi
+          done < <(find uploads -type f -print0 | sort -z -r)
+
+          # Only set output if files were deleted
+          if [ ! -z "$DELETED_FILES_LIST" ]; then
+            echo "deleted_files<<EOF" >> $GITHUB_OUTPUT
+            printf "%b" "$DELETED_FILES_LIST" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create pull request
+        if: steps.delete-files.outputs.deleted_files != ''
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "Delete unreferenced uploads"
+          title: "Delete unreferenced uploads"
+          body: |
+            This PR deletes files from the uploads directory that are not referenced in any markdown files.
+            
+            The following files were deleted:
+            ${{ steps.delete-files.outputs.deleted_files }}
+          branch: actions/prune-uploads
+          delete-branch: true
